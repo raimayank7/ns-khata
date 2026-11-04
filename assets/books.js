@@ -62,6 +62,10 @@
     switch (d.type || 'invoice') {
       case 'invoice': case 'cashmemo': case 'pharma': return 'sale';   /* pharma: pharmacy.niveshsahayak.in */
       case 'resto': return d.status === 'open' ? '' : 'sale';   /* restaurant: a running table is not a sale yet */
+      case 'lr': return 'sale';   /* bilty: freight earned; the payer is the customer */
+      case 'fee': return 'sale';   /* fee receipt: fees received (status paid) */
+      case 'job': return d.print === 'bill' ? 'sale' : '';   /* job card: a sale once it is a service bill */
+      case 'rabill': return 'sale';   /* contractor RA bill: value of work in this bill (retention and TDS settle at payment) */
       case 'note': return d.kind === 'debit' ? 'sdeb' : 'sret';
       case 'receipt': return d.kind === 'ref' ? 'refund' : 'in';
       case 'voucher': return d.forBill ? 'out' : 'outexp';
