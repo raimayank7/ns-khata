@@ -16,6 +16,36 @@
   var SITEOF = { invoice: 'billing', quote: 'quotation', proforma: 'proforma', so: 'sales-order', challan: 'challan', po: 'purchase-order', self: 'self-invoice', note: 'credit-note', cashmemo: 'cash-memo', receipt: 'receipt', voucher: 'voucher' };
   function toolUrl(site) { var x = TOOLS.filter(function (x) { return x[0] === site; })[0]; if (!x) return '#'; return LOCAL ? 'http://localhost:' + x[4] + '/' : 'https://' + x[1] + '/'; }
   function myUrl(h) { return (LOCAL ? 'http://localhost:8862/' : 'https://my.niveshsahayak.in/') + (h || ''); }
+  /* the shell: document makers and My data open inside the app (a frame next to the menu), not as another website.
+     #do/<site><path?query#hash> shows <site> in the frame; Back returns to the screen it was opened from. */
+  var NEWDOCS = [['billing', 'invoice'], ['quotation', 'quote'], ['proforma', 'proforma'], ['sales-order', 'so'], ['challan', 'challan'], ['purchase-order', 'po'], ['credit-note', 'note'],
+    ['cash-memo', 'cashmemo'], ['receipt', 'receipt'], ['voucher', 'voucher'], ['self-invoice', 'self'], ['rent-receipt', 'rent'], ['salary-slip', 'salary'], ['petty-cash', 'petty']];
+  function siteOf(u) {
+    if (u.origin === location.origin) return '';
+    if (u.href.indexOf(myUrl()) === 0) return 'my';
+    var x = TOOLS.filter(function (x) { return u.href.indexOf(toolUrl(x[0])) === 0; })[0];
+    return x ? x[0] : '';
+  }
+  function openUrl(href) {
+    var u; try { u = new URL(href, location.href); } catch (e) { return false; }
+    var s = DOOR ? '' : siteOf(u);
+    if (!s) return false;
+    go('do/' + s + u.pathname + u.search + u.hash);
+    return true;
+  }
+  var backTo = '';
+  function frame(a) {
+    var site = a.split(/[\/?#]/)[0], rest = a.slice(site.length) || '/';
+    var url = (site === 'my' ? myUrl() : toolUrl(site)).replace(/\/$/, '') + rest;
+    var nd = NEWDOCS.filter(function (n) { return n[0] === site; })[0], title = site === 'my' ? NS.t('my.title') : nd ? NS.t('Doc.' + nd[1]) : site;
+    var pane = $('[data-pane]'), fr = $('iframe.app-frame', pane);
+    document.documentElement.classList.add('app-in', 'app-frame-on');
+    if (fr && fr.getAttribute('data-url') === url) return;
+    pane.innerHTML = '<div class="frame-bar"><button type="button" class="btn sm" data-fback>' + esc(T('back')) + '</button><b>' + esc(title) + '</b>' +
+      '<a class="btn sm" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(T('newtab')) + ' \u2197</a></div>' +
+      '<iframe class="app-frame" data-url="' + esc(url) + '" src="' + esc(url) + '" title="' + esc(title) + '"></iframe>';
+    $('[data-fback]', pane).addEventListener('click', function () { go(backTo); });
+  }
   var MODES = ['cash', 'upi', 'cheque', 'bank', 'card', 'dd', 'other'];
   var EXP = ['rent', 'power', 'salary', 'transport', 'phone', 'repair', 'office', 'fuel', 'bank', 'prof', 'ads', 'misc'];
   var SALES = { invoice: 1, cashmemo: 1, note: 1, quote: 1, proforma: 1, so: 1, challan: 1 };
@@ -63,20 +93,23 @@
   /* ---------- sections ---------- */
   function route() {
     var h = decodeURIComponent(location.hash.slice(1)), p = h.split('/');
-    cur = SECS.indexOf(p[0]) >= 0 || EXT[p[0]] ? p[0] : 'home'; arg = p.slice(1).join('/');
+    cur = p[0] === 'do' && !DOOR ? 'do' : SECS.indexOf(p[0]) >= 0 || EXT[p[0]] ? p[0] : 'home'; arg = p.slice(1).join('/');
+    if (cur !== 'do') { backTo = h; document.documentElement.classList.remove('app-frame-on'); }
     if (DOOR && DOOR.indexOf(cur) < 0 && cur !== 'st') { cur = DOOR[0]; arg = ''; }
     show(true);
   }
   function go(h) { location.hash = h; }
   function show(focus) {
     $$('[data-sec]').forEach(function (b) { var on = b.getAttribute('data-sec') === (cur === 'st' ? 'parties' : cur); b.setAttribute('aria-current', on ? 'page' : 'false'); });
+    if (cur === 'do') { frame(arg); return Promise.resolve(); }
     return load().then(function () {
       var pane = $('[data-pane]');
       $('[data-mode]').textContent = T(NSStore.mode() === 'vault' ? 'vault' : 'local');
       labels();
-      if (!BIZ) { pane.innerHTML = noBiz(); return; }
-      pane.innerHTML = bizBar() + (EXT[cur] ? EXT[cur].html(arg) : ({ home: homeHtml, sales: salesHtml, buy: buyHtml, money: moneyHtml, dues: duesHtml, parties: partiesHtml, cash: cashHtml, st: stHtml })[cur]());
-      wire(pane);
+      document.documentElement.classList.toggle('app-in', !!BIZ);
+      if (!BIZ) { pane.innerHTML = noBiz(); wireSample(pane); return; }
+      pane.innerHTML = sampleNote() + bizBar() + (EXT[cur] ? EXT[cur].html(arg) : ({ home: homeHtml, sales: salesHtml, buy: buyHtml, money: moneyHtml, dues: duesHtml, parties: partiesHtml, cash: cashHtml, st: stHtml })[cur]());
+      wire(pane); wireSample(pane);
       if (EXT[cur] && EXT[cur].wire) EXT[cur].wire(pane, arg);
       if (focus) { var h2 = $('h2', pane); if (h2) { h2.tabIndex = -1; h2.focus({ preventScroll: true }); } }
     });
@@ -89,12 +122,24 @@
     $$('a[href$="how-it-works/"]').forEach(function (a) { a.setAttribute('href', L === 'en' ? '/how-it-works/' : '/' + L + '/how-it-works/'); });
   }
   function noBiz() {
-    return '<div class="card"><h2>' + esc(T('nobiz')) + '</h2><p>' + esc(T('nobizp')) + '</p><p><a class="btn primary" href="' + myUrl('#biz') + '">' + esc(T('addbiz')) + '</a></p></div>';
+    return '<div class="card"><h2>' + esc(T('nobiz')) + '</h2><p>' + esc(T('nobizp')) + '</p><p><a class="btn primary" href="' + myUrl('#biz') + '">' + esc(T('addbiz')) + '</a></p></div>' +
+      (window.NSSample && !DOOR ? '<div class="card sample-try"><h3>' + esc(T('sm_try')) + '</h3><p>' + esc(T('sm_tryp')) + '</p><p><button type="button" class="btn" data-sample>' + esc(T('sm_try')) + '</button></p></div>' : '');
+  }
+  /* sample data: shown on every screen while it is there, with one tap to take it away */
+  function sampleNote() {
+    return window.NSSample && NSSample.has(C.biz) ? '<div class="note sample-note"><span>' + esc(T('sm_on')) + '</span><button type="button" class="btn sm" data-unsample>' + esc(T('sm_rm')) + '</button></div>' : '';
+  }
+  function wireSample(pane) {
+    var a = $('[data-sample]', pane), r = $('[data-unsample]', pane);
+    if (a) a.addEventListener('click', function () { a.disabled = true; NSSample.add().then(function () { NS.toast(T('sm_added')); go(''); show(); }, function (e) { a.disabled = false; NS.toast(NS.t('nosave', { e: e.message }), 'bad'); }); });
+    if (r) r.addEventListener('click', function () { if (!confirm(T('sm_conf'))) return; r.disabled = true; NSSample.remove().then(function () { NS.toast(T('sm_gone')); show(); }); });
   }
   function bizBar() {
-    if (C.biz.length < 2) return '';
-    return '<div class="bizbar"><label for="app-biz">' + esc(T('biz')) + '</label><select id="app-biz" data-biz>' + C.biz.map(function (b) {
-      return '<option value="' + esc(b.id) + '"' + (BIZ && b.id === BIZ.id ? ' selected' : '') + '>' + esc(b.name) + '</option>'; }).join('') + '</select></div>';
+    var bz = C.biz.length < 2 ? '' : '<label for="app-biz">' + esc(T('biz')) + '</label><select id="app-biz" data-biz>' + C.biz.map(function (b) {
+      return '<option value="' + esc(b.id) + '"' + (BIZ && b.id === BIZ.id ? ' selected' : '') + '>' + esc(b.name) + '</option>'; }).join('') + '</select>';
+    var nw = '<select class="newdoc" data-newdoc aria-label="' + esc(T('newdoc')) + '"><option value="">+ ' + esc(T('newdoc')) + '</option>' +
+      NEWDOCS.filter(function (n) { return TOOLS.some(function (x) { return x[0] === n[0]; }); }).map(function (n) { return '<option value="' + n[0] + '">' + esc(NS.t('Doc.' + n[1])) + '</option>'; }).join('') + '</select>';
+    return '<div class="bizbar">' + bz + '<span class="grow"></span>' + nw + '<a class="btn sm" href="' + myUrl() + '">' + esc(NS.t('my.title')) + '</a></div>';
   }
 
   /* ---------- dashboard ---------- */
@@ -257,16 +302,18 @@
   function wire(pane) {
     var bs = $('[data-biz]', pane);
     if (bs) bs.addEventListener('change', function () { try { localStorage.setItem('ns-app-biz', bs.value); } catch (e) {} show(); });
+    var nd = $('[data-newdoc]', pane);
+    if (nd) nd.addEventListener('change', function () { var v = nd.value; nd.value = ''; if (v && !openUrl(toolUrl(v))) location.href = toolUrl(v); });
     var qi = $('[data-q]', pane);
     if (qi) qi.addEventListener('input', function () { q = qi.value; var pos = qi.selectionStart; show().then(function () { var n = $('[data-q]'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }); });
     $$('[data-filt]', pane).forEach(function (b) { b.addEventListener('click', function () { filt = b.getAttribute('data-filt'); show(); }); });
     $$('[data-stfrom],[data-stto]', pane).forEach(function (i) { i.addEventListener('change', function () { if (i.hasAttribute('data-stfrom')) stFrom = i.value; else stTo = i.value; show(); }); });
     pane.addEventListener('click', onClick);
-    $$('[data-conv]', pane).forEach(function (s) { s.addEventListener('change', function () { if (!s.value) return; location.href = toolUrl(SITEOF[s.value]) + '?from=' + encodeURIComponent(s.getAttribute('data-conv')); }); });
+    $$('[data-conv]', pane).forEach(function (s) { s.addEventListener('change', function () { if (!s.value) return; var u = toolUrl(SITEOF[s.value]) + '?from=' + encodeURIComponent(s.getAttribute('data-conv')); if (!openUrl(u)) location.href = u; }); });
   }
   function onClick(e) {
     var b = e.target.closest('button'); if (!b) return;
-    if (b.hasAttribute('data-form')) openForm(b.getAttribute('data-form'), { forId: b.getAttribute('data-for'), party: b.getAttribute('data-party'), mode: b.getAttribute('data-mode') });
+    if (b.hasAttribute('data-form')) openForm(b.getAttribute('data-form'), { forId: b.getAttribute('data-for'), party: b.getAttribute('data-party'), mode: b.getAttribute('data-mode'), side: b.getAttribute('data-side') || '' });
     else if (b.hasAttribute('data-photo')) showPhoto(b.getAttribute('data-photo'));
     else if (b.hasAttribute('data-edit')) { var d = C.doc.filter(function (x) { return x.id === b.getAttribute('data-edit'); })[0]; if (d) openForm(formOf(d), { rec: d }); }
     else if (b.hasAttribute('data-del')) delRec(b.getAttribute('data-del'));
@@ -394,8 +441,8 @@
         fld('f-ref', T('ref'), inp('f-ref', cx.ref || '', { ltr: 1 })) + fld('f-note', T('note'), inp('f-note', cx.notes || ''), { wide: 1 }) + '</div>';
     } else if (kind === 'ob') {
       var ob = rec || { date: fyStart(today), side: 'recv' };
-      h = '<p class="soft">' + esc(T('obh')) + '</p><div class="fg">' + fld('f-party', T('party'), inp('f-party', party, { req: 1, list: 'dl-party' }) + partyList()) +
-        fld('f-side', T('side'), sel('f-side', ob.side, [['recv', T('s_recv')], ['pay', T('s_pay')]])) +
+      h = '<p class="soft">' + esc(T('obh')) + '</p><div class="fg">' + fld('f-side', T('side'), sel('f-side', o.side || ob.side, [['recv', T('s_recv')], ['pay', T('s_pay')], ['cash', T('s_cash')], ['bank', T('s_bank')]])) +
+        fld('f-party', T('party'), inp('f-party', party, { req: 1, list: 'dl-party' }) + partyList()) +
         fld('f-amt', T('amount'), inp('f-amt', ob.amount || '', { mode: 'decimal', ltr: 1, req: 1 })) +
         fld('f-date', T('date'), inp('f-date', ob.date, { type: 'date', req: 1 })) + '</div>';
     }
@@ -406,6 +453,7 @@
     if (al) al.addEventListener('click', function () { F.lines.push({ desc: '', hsn: '', qty: 1, rate: '', gst: $('#f-nogst', form).checked ? 0 : 18 }); drawLines(); });
     if (F.lines) drawLines();
     if (kind === 'min' || kind === 'mout') { drawAlloc(true); chqShow(); }
+    if (kind === 'ob') obShow();
     if (F.lines) drawPhoto();
     dlg.showModal();
     var first = $('input:not([type=date]),select', form); if (first && !first.value) first.focus();
@@ -434,9 +482,14 @@
     box.innerHTML = F.photo ? '<img src="' + F.photo + '" alt="' + esc(T('photo')) + '"><button type="button" class="btn sm" data-photo-rm>' + esc(T('photorm')) + '</button>' : '';
     var rm = $('[data-photo-rm]', box); if (rm) rm.addEventListener('click', function () { F.photo = ''; $('#f-photo', form).value = ''; drawPhoto(); });
   }
+  function obShow() {   /* cash in hand / bank balance: no party */
+    var p = $('#f-party', form), own = /^(cash|bank)$/.test($('#f-side', form).value);
+    p.closest('.f').hidden = own; p.required = !own; if (own) p.value = '';
+  }
   function onFormInput(e) {
     var id = e.target.id || '';
     if (id === 'f-mode' || id === 'f-cst') chqShow();
+    if (id === 'f-side' && $('#f-party', form) && F.kind === 'ob') obShow();
     if (id === 'f-photo') { if (e.type === 'change' && e.target.files[0]) shrinkPhoto(e.target.files[0]).then(function (u) { F.photo = u; drawPhoto(); }).catch(function () { NS.toast(T('photobad'), 'bad'); }); return; }
     if (F.lines && e.target.hasAttribute('data-li')) { var i = +e.target.getAttribute('data-li'), k = e.target.getAttribute('data-lk'); F.lines[i][k] = e.target.value; if (k === 'desc') fillItem(i); drawSum(); return; }
     if (F.lines && /f-(nogst|round|state)/.test(id)) drawSum();
@@ -576,8 +629,9 @@
       return NSStore.put('doc', d).then(done);
     }
     if (k === 'ob') {
-      d = Object.assign(rec || { type: 'ob', app: 1 }, { date: $('#f-date', form).value, seller: sellerCopy(), buyer: { name: party }, side: $('#f-side', form).value, amount: r2(num($('#f-amt', form).value)) });
+      d = Object.assign(rec || { type: 'ob', app: 1 }, { date: $('#f-date', form).value, seller: sellerCopy(), buyer: { name: /^(cash|bank)$/.test($('#f-side', form).value) ? '' : party }, side: $('#f-side', form).value, amount: r2(num($('#f-amt', form).value)) });
       d.total = d.amount; d.no = '';
+      if (!d.buyer.name) return NSStore.put('doc', d).then(done);
       return savePartyRole(party, d.side === 'pay' ? 'supplier' : 'customer').then(function () { return NSStore.put('doc', d); }).then(done);
     }
   }
@@ -612,16 +666,22 @@
     mine: mine, biz: function () { return BIZ; }, bizName: bizName, data: function () { return C; }, docName: docName, enName: enName, amountOf: amountOf,
     rowsHtml: rowsHtml, leftMap: leftMap, searchBar: searchBar, match: match, byDate: byDate, fyStart: fyStart, toolUrl: toolUrl, myUrl: myUrl, ldate: ldate,
     range: function (f, t) { if (f) stFrom = f; if (t) stTo = t; if (!stTo) stTo = NS.today(); if (!stFrom) stFrom = fyStart(stTo); return [stFrom, stTo]; },
-    markPaid: markPaid, q: function () { return q; }, filt: function (f) { if (f != null) filt = f; return filt; }
+    markPaid: markPaid, openUrl: openUrl, q: function () { return q; }, filt: function (f) { if (f != null) filt = f; return filt; }
   };
   function init() {
     if (!$('#app')) return;
     var ds = $('#app').getAttribute('data-secs'); if (ds) DOOR = ds.split(/\s+/);
     $$('[data-sec]').forEach(function (b) { b.addEventListener('click', function () { q = ''; filt = 'all'; }); });
     window.addEventListener('hashchange', route);
-    document.addEventListener('ns-lang', function () { show(); });
+    document.addEventListener('ns-lang', function () { if (cur !== 'do') show(); });
+    /* links to a document maker or My data open inside the app (new-tab and modified clicks are left alone) */
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href]');
+      if (!a || a.target === '_blank' || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      if (openUrl(a.href)) e.preventDefault();
+    });
     NSStore.ready().then(route).then(function () { NSStore.persist().catch(function () {}); });
-    window.addEventListener('focus', function () { if (!dlg || !dlg.open) show(); });   /* bills made in another tab show up when you come back */
+    window.addEventListener('focus', function () { if (cur !== 'do' && (!dlg || !dlg.open)) show(); });   /* bills made in another tab show up when you come back */
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
