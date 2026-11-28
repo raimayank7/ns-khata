@@ -1,0 +1,29 @@
+/* khata: reminders from an outstanding list (byof2-khata, 28 Nov 2026) */
+.rembulk{margin:28px auto}
+.rembulk>h2{margin:0 0 4px}
+.rb-card h3{margin-top:0}
+.rb-drop{display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;text-align:center;padding:22px 14px;border:2px dashed var(--line);border-radius:var(--r,12px);background:var(--surface2);cursor:pointer}
+.rb-drop.on{border-color:var(--accent,#0E746A);background:color-mix(in srgb,var(--accent,#0E746A) 8%,var(--surface2))}
+.rb-drop span{font-size:.88rem;color:var(--muted,inherit);max-width:60ch}
+.rb-pick{color:var(--accent,#0E746A);text-decoration:underline;cursor:pointer}
+.rb-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.rb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px;margin:8px 0}
+.rb-grid label,.rb-tpl{display:flex;flex-direction:column;gap:4px;font-size:.9rem;min-width:0}
+.rb-grid input,.rb-grid select,.rb-tpl textarea{width:100%;box-sizing:border-box;min-height:40px}
+.rb-tpl textarea{font-family:var(--mono);font-size:.9rem;line-height:1.45;min-height:180px}
+.rb-list .rb-mob{width:9.5em;min-height:36px}
+.rb-list .rb-mob[aria-invalid=true]{border-color:#c0392b}
+.rb-list th small{font-weight:400}
+.rb-ok{white-space:nowrap;display:inline-flex;gap:6px;align-items:center;min-height:36px}
+.rb-skip{margin:8px 0}.rb-skip ul{max-height:260px;overflow:auto;margin:6px 0;padding-left:20px;font-size:.9rem}
+.rb-prev{background:var(--surface2);border-radius:10px;padding:10px 12px;margin:10px 0}
+.rembulk .msg-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0}
+.rb-hand{border-width:2px;border-color:var(--accent,#0E746A)}
+.rb-handbody{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.rb-handbody .msg-text{flex:1 1 260px;background:var(--surface2);border-radius:10px;padding:10px 12px}
+.rb-qr{margin:0;flex:0 0 150px;text-align:center;background:#fff;color:#000;border-radius:10px;padding:8px}
+.rb-qr svg{width:134px;height:134px;display:block;margin:0 auto}
+.rb-qr figcaption{font-size:.85rem;font-weight:600}
+.rb-cols{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.rb-stop summary{cursor:pointer}
+@media (max-width:560px){.rb-list .rb-mob{width:8.2em}.rb-qr{flex-basis:100%}}

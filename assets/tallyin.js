@@ -96,7 +96,12 @@
   function vchOf(n) {
     var f = {}; VF.forEach(function (k) { var x = val(n, k); if (x) f[k] = x; });
     var lines = [];
-    function led(x, alloc) { if (!val(x, 'LEDGERNAME')) return; var l = { name: val(x, 'LEDGERNAME'), amt: r2(-num(val(x, 'AMOUNT'))) }; if (alloc) l.alloc = 1; lines.push(l); }
+    function led(x, alloc) { if (!val(x, 'LEDGERNAME')) return; var l = { name: val(x, 'LEDGERNAME'), amt: r2(-num(val(x, 'AMOUNT'))) }; if (alloc) l.alloc = 1;
+      /* a bank ledger's line: cheque / UTR number and the date the bank cleared it, as typed in Tally's bank allocation (bank reconciliation, 28 Nov 2026) */
+      var ba = kids(x, 'BANKALLOCATIONS.LIST')[0]; if (ba) { var ch = val(ba, 'INSTRUMENTNUMBER'), bd = ymd(val(ba, 'BANKERSDATE')); if (ch) l.chq = ch; if (bd) l.bdate = bd; if (val(ba, 'TRANSACTIONTYPE')) l.ttype = val(ba, 'TRANSACTIONTYPE'); }
+      /* bill-wise references of the line (New Ref / Agst Ref names): byof3-msme43bh (28 Nov 2026), to tie a payment to the bill it settles */
+      var bl = kids(x, 'BILLALLOCATIONS.LIST').map(function (b) { return { name: val(b, 'NAME'), amt: r2(-num(val(b, 'AMOUNT'))), type: val(b, 'BILLTYPE') }; }).filter(function (b) { return b.name; }); if (bl.length) l.bills = bl;
+      lines.push(l); }
     ['LEDGERENTRIES.LIST', 'ALLLEDGERENTRIES.LIST'].forEach(function (nm) { kids(n, nm).forEach(function (x) { led(x); }); });
     var inv = [];
     ['ALLINVENTORYENTRIES.LIST', 'INVENTORYENTRIES.LIST', 'INVENTORYENTRIESIN.LIST', 'INVENTORYENTRIESOUT.LIST'].forEach(function (nm) {
@@ -111,12 +116,30 @@
   }
   function ledOf(n, nm) {
     var o = { name: nm, parent: val(n, 'PARENT'), duty: (val(n, 'GSTDUTYHEAD') || val(n, 'TAXTYPE')).toLowerCase(), gstin: (val(n, 'PARTYGSTIN') || '').toUpperCase(), addr: [], pin: '', st: '',
-      phone: val(n, 'LEDGERPHONE') || val(n, 'LEDGERMOBILE'), email: val(n, 'EMAIL'), cdays: num(val(n, 'BILLCREDITPERIOD')) || '', opening: val(n, 'OPENINGBALANCE'), gst: gstOfItem(n) };
+      phone: val(n, 'LEDGERPHONE') || val(n, 'LEDGERMOBILE'), email: val(n, 'EMAIL'), cdays: num(val(n, 'BILLCREDITPERIOD')) || '', opening: val(n, 'OPENINGBALANCE'), closing: val(n, 'CLOSINGBALANCE'),   /* closing: byof2-final (28 Nov 2026), trial balance from masters */
+      gst: gstOfItem(n),
+      pan: (val(n, 'INCOMETAXNUMBER') || '').toUpperCase(), tdsType: val(n, 'TDSDEDUCTEETYPE') || val(n, 'DEDUCTEETYPE') };   /* byof-tds (28 Nov 2026): PAN and deductee type of a party, for the TDS site */
     walk(n, function (x) { if (!o.gstin && x.n === 'GSTIN') o.gstin = t(x.x).toUpperCase(); if (x.n === 'ADDRESS') o.addr.push(t(x.x)); if (!o.pin && x.n === 'PINCODE') o.pin = t(x.x); if (!o.st && (x.n === 'LEDSTATENAME' || x.n === 'STATE' || x.n === 'STATENAME')) o.st = t(x.x); });
     o.addr = o.addr.filter(Boolean).join(', ');
+    /* MSME details of a party ledger (TallyPrime's MSME registration part; tags matched by name, not tried on a real export): byof3-msme43bh (28 Nov 2026) */
+    walk(n, function (x) { if (!/MSME|UDYAM/.test(x.n || '')) return; var v = t(x.x); if (!v) return; if (!o.udyam && /^UDYAM/i.test(v.replace(/[^A-Za-z0-9]/g, ''))) o.udyam = v.toUpperCase(); else if (!o.msme && /^(micro|small|medium)$/i.test(v)) o.msme = v.toLowerCase(); else if (!o.activity && /ACTIVITY/.test(x.n) && /manufactur|service|trad/i.test(v)) o.activity = v; });
     return o;
   }
-  function itemOf(n, nm) { return { name: nm, unit: val(n, 'BASEUNITS'), hsn: hsnOf(n), gst: gstOfItem(n), ob: val(n, 'OPENINGBALANCE'), ov: val(n, 'OPENINGVALUE'), orate: val(n, 'OPENINGRATE') }; }
+  function itemOf(n, nm) { return Object.assign({ name: nm, unit: val(n, 'BASEUNITS'), hsn: hsnOf(n), gst: gstOfItem(n), ob: val(n, 'OPENINGBALANCE'), ov: val(n, 'OPENINGVALUE'), orate: val(n, 'OPENINGRATE') }, itemMore(n, nm)); }
+  /* byof-pricelist (28 Nov 2026): what a price list needs from a STOCKITEM (extra fields only; the import above does not use them):
+     group = PARENT (stock group), cat = CATEGORY, alias = other names in NAME.LIST, mrp = newest MRPRATE, sp = newest STANDARDPRICELIST
+     RATE (selling price), cost = newest STANDARDCOSTLIST RATE, levels = { price level: rate } from FULLPRICELIST.LIST, cb = CLOSINGBALANCE */
+  function itemMore(n, nm) {
+    var o = { group: val(n, 'PARENT'), cat: val(n, 'CATEGORY'), alias: '', mrp: 0, sp: 0, cost: 0, levels: {}, cb: val(n, 'CLOSINGBALANCE') };
+    var nl = kid(n, 'NAME.LIST'); if (nl) o.alias = kids(nl, 'NAME').map(function (x) { return t(x.x); }).filter(function (x) { return x && key(x) !== key(nm); })[0] || '';
+    function newest(list, rk) { var best = null; list.forEach(function (x) { var d = val(x, 'DATE') || val(x, 'FROMDATE'), r = rate(val(x, rk)); if (r && (!best || d >= best.d)) best = { d: d, r: r }; }); return best ? best.r : 0; }
+    o.sp = newest(kids(n, 'STANDARDPRICELIST.LIST'), 'RATE');
+    o.cost = newest(kids(n, 'STANDARDCOSTLIST.LIST'), 'RATE');
+    var mrps = []; walk(n, function (x) { if (x.n === 'MRPDETAILS.LIST') { var d = val(x, 'FROMDATE'); walk(x, function (y) { if (y.n === 'MRPRATE' && rate(y.x)) mrps.push({ d: d, r: rate(y.x) }); }); } });
+    var md = null; mrps.forEach(function (m) { if (md === null || m.d >= md) { md = m.d; o.mrp = m.r; } });
+    kids(n, 'FULLPRICELIST.LIST').forEach(function (x) { var lv = val(x, 'PRICELEVEL'), pl = kids(x, 'PRICELEVELLIST.LIST')[0]; if (lv && pl && rate(val(pl, 'RATE'))) o.levels[lv] = rate(val(pl, 'RATE')); });
+    return o;
+  }
   function collector() {
     var M = { groups: {}, ledgers: {}, items: {}, vtypes: {}, units: {}, vouchers: [], company: '', _m: 1 }, dec = null, buf = '';
     function take(name, xml) {
@@ -470,6 +493,62 @@
     return { rows: rows, ok: ok, bad: bad };
   }
 
-  var API = { decode: decode, parse: parse, collect: collect, collector: collector, plan: plan, check: check, stateCode: stateCode };
+  /* ---------- the purchase register of a Day Book (for the GSTR-2B matcher, g2core.js) ----------
+     Purchase vouchers and debit notes (purchase returns) only, cancelled / optional ones left out. One bill each: the supplier's own
+     number and date (REFERENCE, REFERENCEDATE; else the voucher's), the party's GSTIN, the bill value = the party line, tax = the
+     Duties & Taxes lines by head (IGST, CGST, SGST / UTGST, cess), taxable value = value - tax - round off. Nothing is changed. */
+  function purchases(texts) {
+    var M = collect(texts), L = ledgerMap(M), out = { company: M.company, bills: [], read: 0, left: 0 };
+    M.vouchers.forEach(function (v) {
+      var base = baseType(M, v);
+      if (base !== 'purchase' && base !== 'debit note') return;
+      out.read++;
+      if (gone(v)) { out.left++; return; }
+      var party = fv(v, 'PARTYLEDGERNAME'), pk = key(party), val = 0, tax = { igst: 0, cgst: 0, sgst: 0, cess: 0 }, ro = 0;
+      v.lines.forEach(function (l) {
+        var m = L[key(l.name)] || {}, a = Math.abs(l.amt), nm = l.name.toLowerCase();
+        if (pk ? key(l.name) === pk : m.party) { val = r2(val + a); return; }
+        if (m.k === 'round-off') { ro = r2(ro + l.amt); return; }
+        if (m.group === 'duties & taxes' || /\b(cgst|sgst|igst|utgst|cess)\b/.test(nm)) {
+          var h = /cess/.test(nm) ? 'cess' : m.head === 'utgst' ? 'sgst' : m.head || (/igst|integrated/.test(nm) ? 'igst' : /cgst|central/.test(nm) ? 'cgst' : /sgst|utgst|state/.test(nm) ? 'sgst' : '');
+          if (h) tax[h] = r2(tax[h] + a);
+        }
+      });
+      var led = M.ledgers[pk] || {}, sumTax = tax.igst + tax.cgst + tax.sgst + tax.cess;
+      out.bills.push({ kind: base === 'debit note' ? 'cn' : 'inv', name: party, gstin: (fv(v, 'PARTYGSTIN') || led.gstin || '').toUpperCase(), no: fv(v, 'REFERENCE') || fv(v, 'VOUCHERNUMBER'),
+        date: ymd(fv(v, 'REFERENCEDATE')) || ymd(fv(v, 'DATE')), vno: fv(v, 'VOUCHERNUMBER'), vtype: fv(v, 'VOUCHERTYPENAME') || v.a.VCHTYPE || '', value: val,
+        txv: r2(val - sumTax - (base === 'debit note' ? -ro : ro)), igst: tax.igst, cgst: tax.cgst, sgst: tax.sgst, cess: tax.cess });
+    });
+    return out;
+  }
+
+  /* ---------- money paid to suppliers (byof3-msme43bh, 28 Nov 2026: MSME 45-day check on audit.) ----------
+     Payment and Journal vouchers (and any other non-invoice type) that DEBIT a Sundry Creditors ledger: one row per supplier line, with
+     the voucher's date, the amount, and the bill references of its bill-wise allocation (Agst Ref names). Purchase bills: purchases().
+     Also the suppliers' MSME details from their ledgers (msme, udyam, activity, credit days). */
+  function supplierPayments(texts) {
+    var M = collect(texts), L = ledgerMap(M), out = { company: M.company, pays: [], read: 0, left: 0, sups: [] };
+    M.vouchers.forEach(function (v) {
+      var base = baseType(M, v);
+      if (/^(purchase|sales|debit note|credit note|purchase order|sales order|delivery note|receipt note|stock journal|memorandum)$/.test(base)) return;
+      v.lines.forEach(function (l) {
+        var m = L[key(l.name)] || {}; if (m.role !== 'supplier' || !(l.amt > 0)) return;
+        out.read++; if (gone(v)) { out.left++; return; }
+        out.pays.push({ name: l.name, date: ymd(fv(v, 'DATE')), amt: r2(l.amt), vno: fv(v, 'VOUCHERNUMBER'), vtype: fv(v, 'VOUCHERTYPENAME') || v.a.VCHTYPE || '', base: base,
+          refs: (l.bills || []).filter(function (b) { return !/^(on account|new ref)$/i.test(b.type); }).map(function (b) { return b.name; }) });
+      });
+    });
+    Object.keys(M.ledgers).forEach(function (k) { var d = M.ledgers[k], m = L[k] || {}; if (m.role === 'supplier') out.sups.push({ name: d.name, msme: d.msme || '', udyam: d.udyam || '', activity: d.activity || '', cdays: d.cdays || '', gstin: d.gstin }); });
+    return out;
+  }
+  /* voucher number + date -> the supplier line's bill reference names (New Ref) of each purchase / debit note, to match Agst Ref payments */
+  function purchaseRefs(texts) {
+    var M = collect(texts), L = ledgerMap(M), out = {};
+    M.vouchers.forEach(function (v) { var base = baseType(M, v); if (base !== 'purchase' && base !== 'debit note') return;
+      v.lines.forEach(function (l) { var m = L[key(l.name)] || {}; if (m.role === 'supplier' && l.bills) out[fv(v, 'VOUCHERNUMBER') + '|' + ymd(fv(v, 'DATE'))] = l.bills.map(function (b) { return b.name; }); }); });
+    return out;
+  }
+
+  var API = { decode: decode, parse: parse, collect: collect, collector: collector, plan: plan, check: check, stateCode: stateCode, purchases: purchases, supplierPayments: supplierPayments, purchaseRefs: purchaseRefs };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else G.NSTallyIn = API;
 })(typeof window !== 'undefined' ? window : this);

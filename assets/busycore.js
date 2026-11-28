@@ -470,6 +470,6 @@
     return { n: B.vouchers.length, bad: bad };
   }
 
-  var API = { read: read, parse: parse, combine: combine, plan: plan, check: check, balanced: balanced, ownState: ownState, calibrate: calibrate, accountsMap: accountsMap, fileKind: fileKind, company: company, isoDate: isoDate, stateCode: stateCode };
+  var API = { read: read, parse: parse, combine: combine, plan: plan, check: check, balanced: balanced, ownState: ownState, calibrate: calibrate, signer: signer, accountsMap: accountsMap, fileKind: fileKind, company: company, isoDate: isoDate, stateCode: stateCode };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else G.NSBusy = API;
 })(typeof window !== 'undefined' ? window : this);

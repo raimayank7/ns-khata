@@ -2,7 +2,7 @@
  "id": "/",
  "name": "Nivesh Sahayak Khata",
  "short_name": "NS Khata",
- "description": "Free khata book: customer dues, statements and reminders",
+ "description": "Free khata book: customer dues, statements and WhatsApp reminders from your Tally or Excel outstanding list",
  "start_url": "/",
  "scope": "/",
  "display": "standalone",

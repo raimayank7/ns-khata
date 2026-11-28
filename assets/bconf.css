@@ -1,0 +1,33 @@
+/* khata: balance confirmation letters in bulk (byof3-confirm, 28 Nov 2026); drop zone, grids and hand-over card reuse rembulk.css (rb-*) */
+.bconf{margin:28px auto}
+.bconf>h2{margin:0 0 4px}
+.bc-card h3{margin-top:0}
+.bc-card h4{margin:14px 0 4px}
+.bc-wide{grid-column:1/-1}
+.bc-card .chk{flex-direction:row!important;align-items:center;gap:8px!important;min-height:40px}
+.bc-card .chk input{width:auto!important;min-height:0!important}
+.bc-biz{margin-top:10px}.bc-biz summary{cursor:pointer;min-height:36px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bc-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+.bc-tiles>div{background:var(--surface2);border-radius:10px;padding:10px 12px;min-width:0}
+.bc-tiles span{display:block;font-size:.85rem;color:var(--soft,inherit)}
+.bc-tiles b{font-size:1.25rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bc-note{background:color-mix(in srgb,#d97706 12%,var(--surface2));border-radius:8px;padding:8px 10px}
+.bc-list .bc-mail{width:13em;min-height:36px}
+.bc-list tr.bc-off th,.bc-list tr.bc-off td.n{opacity:.5}
+.bc-list th small{font-weight:400}
+.bc-prev{margin-top:8px}
+.bc-prev .stsheet{max-width:760px}
+.bc-letter .bc-bills{margin:4px 0 10px;width:100%}
+.bc-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.bc-two .rb-tpl{margin-bottom:8px}
+.bc-two input{width:100%;box-sizing:border-box;min-height:40px}
+.bconf .msg-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0}
+.bc-handtxt{background:var(--surface2);border-radius:10px;padding:10px 12px}
+@media screen{.bc-printbox{display:none}}
+@media print{
+html.bc-printing body *{visibility:hidden}
+html.bc-printing .bc-printbox,html.bc-printing .bc-printbox *{visibility:visible}
+html.bc-printing .stsheet:not(.bc-printbox .stsheet){display:none}
+html.bc-printing .bc-printbox{display:block}
+}
+@media (max-width:560px){.bc-list .bc-mail{width:10em}}
